@@ -1,0 +1,3 @@
+[submodule "patetokens"]
+	path = patetokens
+	url = https://github.com/Prezzy/patetokens.git
