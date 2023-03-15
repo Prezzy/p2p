@@ -9,7 +9,7 @@ class Verifier (Node):
         super(Verifier, self).__init__(host, port, id, callback, max_connections)
 
         self.db = Database()
-        self.key = Key()
+        self.key = None
         self.token_pubkey = None
         self.neighbours = None
 
@@ -28,13 +28,13 @@ class Verifier (Node):
                 self.received_token_auth(connected_node, message)
 
             if (message['_type'] == 'broadcast-step1-result'):
-                self.received_step1(connected_node, message)
+                self.step2(connected_node, message)
 
             if (message['_type'] == 'broadcast-step2-result'):
-                self.received_step2(connected_node, message)
+                self.step3(connected_node, message)
 
             if (message['_type'] == 'broadcast-step3-result'):
-                self.received_step3(connected_node, message)
+                self.step4(connected_node, message)
     
 
     def unwrap_token(self, token):
@@ -43,16 +43,23 @@ class Verifier (Node):
         payload = json.loads(Token.payload.decode('utf-8'))
 
         Enc = Cipher.from_b64str(payload['Enc'],self.key)
-        B = Cipher.from_b64str(payload['B'], self.key)
-        V = Cipher.from_b64str(payload['V'], self.key)
 
-        return (Enc, B, V)
+        return Enc
 
     def unwrap_ciphers(self, ciphers):
         unwrapped = []
         for ciph in ciphers:
             unwrapped.append(Cipher.from_b64str(ciph, key))
         return unwrapped
+
+    def unwrap_auth_data(self, data):
+        '''Parses the initial authentication message
+        recieved from the user. takes as input message
+        json data and outputs unwrapped objects'''
+
+        Enc = self.unwrap_token(ssid, data['token'])
+        ciphertexts = self.unwrap_ciphers(token['ciphers'])
+        return Enc, ciphertexts[0], ciphertexts[1], data['user-nonce']
 
 
     def received_auth_init(self, node, data):
@@ -65,70 +72,68 @@ class Verifier (Node):
     def received_token_auth(self, node, data):
         ssid = data['ssid']
         if ssid in self.db:
-            token = data['token']
-            Enc, B, V = self.unwrap_token(ssid, token)
-            user_nonce = data['user-nonce']
+            Enc, B, V, user_nonce = self.unwrap_auth_data(ssid, data)
             self.db.store_token_params(Enc, B, V)
 
-            #TODO: implement that for db and return the tau string
-            tau = self.db.store_authentication_nonce(user_nonce)
+            tau = self.db.store_authentication_nonce(ssid, user_nonce)
+
             proof = data['proof']
+
             if NIZK.verifyQ(tau, [Enc, B, V], proof, key):
                 ciphertexts, randomness = DistVerify.round1(B, V, key)
+                seld.db.store_step1_params(self.id, ssid, ciphertexts)
                 proofR = NIZK.proveR(self.id, ciphertexts, randomness, key)
                 
                 serialized_ciphers = []
-                for cipher in ciphertexts[2:]:
+                for cipher in ciphertexts:
                     serialized_ciphers.append(cipher.export_b64str())
                 response = {'ciphers': serialized_ciphers, 'proofR': proofR}
-                self.sent_to_nodes(response)
+                # possibly thread this
+                self.send_to_nodes(response)
 
-    def received_step1(self, node, data):
-        ssid = data['ssid']
-        if ssid in self.db:
-            B = self.db[ssid].B
-            V = self.db[ssid].V
-            ciphertexts = self.unwrap_ciphers(data['ciphers'])
-            proof = data['proof']
-            if NIZK.verifyR(node.id, ciphertexts, proof, self.key):
+    def step2(self, node, data):
+        #ssid = data['ssid']
+        #if ssid in self.db:
+        #    B = self.db[ssid].B
+        #    V = self.db[ssid].V
+        #    ciphertexts = self.unwrap_ciphers(data['ciphers'])
+        #    proof = data['proof']
+        #    if NIZK.verifyR(node.id, ciphertexts, proof, self.key):
                 #print a debug message if the thing didn't work
                 #gotta do something here then check if I'm the last thread
                 #if check:
-                tau2, C, Ri, ai, zeta, yg, Cbar = DistVerify.round2(self.id, tau, B, V, self.key)
+        #        tau2, C, Ri, ai, zeta, yg, Cbar = DistVerify.round2(self.id, tau, B, V, self.key)
                 #TODO: get Ci quickly
-                proof = NIZK.proveS(self.id, tau2, Ci, Ri, [ai, zeta], self.key)
-                response = {'Ri': Ri, 'proof': proof}
-                self.send_to_nodes(response)
+         #       proof = NIZK.proveS(self.id, tau2, Ci, Ri, [ai, zeta], self.key)
+          #      response = {'Ri': Ri, 'proof': proof}
+           #     self.send_to_nodes(response)
+        pass
 
-    def received_step2(self, node, data):
-        ssid = data['ssid']
-        if data['ssid'] in self.db:
-            tau2 = self.db[data['ssid']].tau2
-            Cj = self.db[data['ssid']].#TODO
-            Rj = data['Rj']
-            proof = data['proof']
-            if NIZK.verifyS(node.id, tau2, Cj, Ri, proof, self.key):
+    def step3(self, node, data):
+        #ssid = data['ssid']
+        #if data['ssid'] in self.db:
+        #    tau2 = self.db[data['ssid']].tau2
+        #    Cj = self.db[data['ssid']].#TODO
+        #    Rj = data['Rj']
+        #    proof = data['proof']
+         #   if NIZK.verifyS(node.id, tau2, Cj, Ri, proof, self.key):
                 #check that I'm the last one
                     #proof = NIZK.proveT(self.id, tau2, gbar, Cbar, Ci, Ri, [ai, zeta], self.key)
                     #response = {'Cbar': Cbar, 'proof':proof}
                     #self.send_to_nodes(response)
+        pass
 
-    def received_step3(self, node, data):
-        ssid = data['ssid']
-        if ssid in self.db:
-            tau2 = self.db[ssid].tau2
-            gbar = self.db[ssid].gbar
-            Cbar = data['Cbar']
-            Cj = self.db[ssid].
-            Rj = self.db[ssid].
-            proof = self.db[ssid]
-            if NIZK.verify(node.id, tau2, gbar, Cbar, Cj, Rj, proof, self.key):
+    def step4(self, node, data):
+        #ssid = data['ssid']
+        #if ssid in self.db:
+        #    tau2 = self.db[ssid].tau2
+        #    gbar = self.db[ssid].gbar
+        #    Cbar = data['Cbar']
+        #    Cj = self.db[ssid].
+        #    Rj = self.db[ssid].
+        #    proof = self.db[ssid]
+        #    if NIZK.verify(node.id, tau2, gbar, Cbar, Cj, Rj, proof, self.key):
                 #check i'm the last thread to update
                     # response = {'result': 'ACCEPT'}
                     #self.send_to_nodes(response)
-
-
-
-
-
-
+        pass
