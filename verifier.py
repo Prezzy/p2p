@@ -37,6 +37,11 @@ class Verifier (Node):
                 self.step4(connected_node, message)
     
 
+    def load_key(self):
+        with open("key_ver_{}".format(self.id)) as file:
+            key_dict = file.read()
+            key_dict
+
     def unwrap_token(self, token):
         Token = jws.JWS()
         Token.desreialize(token, key=self.token_key)
