@@ -11,7 +11,7 @@ class User(Node):
         self.db = {}
         self.key = None
         self.token = None
-        self.token_pubkey = None
+        self.token_key = None
         self.neighbours = None
 
     def node_message(self, connected_node, message):
@@ -24,6 +24,18 @@ class User(Node):
 
             if (message['_type'] == 'result'):
                 self.received_result(connected_node, message)
+
+
+    def fetch_keys(self):
+        with open("token_key.txt", "r") as file:
+            key_dict = file.read()
+            self.token_key = jwk.JWK.from_json(key_dict)
+
+        with open("ver_keys_for_user.txt") as file:
+            ver_key = NistKey.Key()
+            key_dict = file.read()
+            ver_key.from_json(key_dict)
+            self.key = ver_key
 
     def initiate_auth(self):
         self.token = User.make_token(key, token_key, 'JohnDoe', 'P@ssword!')
