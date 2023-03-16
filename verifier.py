@@ -1,7 +1,12 @@
+import json
 from p2pnetwork.node import Node
 from db import Database, User
 from patetokens.Cipher import Cipher
-from patetokens import NIZK, DistVerify, utils
+from patetokens import NIZK, NistKey, DistVerify, utils
+from jwcrypto import jwk, jws
+
+
+
 
 class Verifier (Node):
 
@@ -12,6 +17,9 @@ class Verifier (Node):
         self.key = None
         self.token_pubkey = None
         self.neighbours = None
+
+        #load keys from file
+        self.load_keys()
 
     def node_message(self, connected_node, message):
         
@@ -37,10 +45,15 @@ class Verifier (Node):
                 self.step4(connected_node, message)
     
 
-    def load_key(self):
-        with open("key_ver_{}".format(self.id)) as file:
+    def load_keys(self):
+        with open("veri_key_{}".format(self.id)) as file:
+            self.key = NistKey.DistributedKey()
             key_dict = file.read()
-            key_dict
+            self.key.from_json(json.loads(key_dict))
+
+        with open("token_public_key.txt".format()) as file:
+            key_dict = file.read()
+            self.token_pubkey = jwk.JWK.from_json(key_dict)
 
     def unwrap_token(self, token):
         Token = jws.JWS()
@@ -68,11 +81,13 @@ class Verifier (Node):
 
 
     def received_auth_init(self, node, data):
-        nonce = rand_felement_b64str(self.key)
+        nonce = utils.rand_felement_b64str(self.key)
         self.db.new_auth_nonce(data['ssid'], self.id, nonce)
+        print("node {} got request for nonce and made {}".format(self.id, nonce))
 
     def received_broadcast_nonde(self, node, data):
         self.db.new_auth_nonce(data['ssid'], data['id'], data['nonce'])
+        print("node {} for nonce {} from node {}".format(self.id, data['nonce'], node.id))
 
     def received_token_auth(self, node, data):
         ssid = data['ssid']

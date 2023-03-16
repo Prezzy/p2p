@@ -1,18 +1,23 @@
+import json
 from p2pnetwork.node import Node
 from db import Database, User
 from patetokens.Cipher import Cipher
-from patetokens import NIZK, DistVerify, utils, User
+from patetokens import NIZK, NistKey, DistVerify, utils, User
+from jwcrypto import jwk, jws
 
 
-class User(Node):
+class Client(Node):
 
     def __init__(self, host, port, id=None, callback=None, max_connections=4):
-        super(User, self).__init__(host, port, id, callback, max_connections)
+        super(Client, self).__init__(host, port, id, callback, max_connections)
         self.db = {}
         self.key = None
         self.token = None
         self.token_key = None
         self.neighbours = None
+
+        self.fetch_keys()
+
 
     def node_message(self, connected_node, message):
 
@@ -27,6 +32,9 @@ class User(Node):
 
 
     def fetch_keys(self):
+        '''This function is called as part of the init
+        for user node. read key files and create the key
+        objects'''
         with open("token_key.txt", "r") as file:
             key_dict = file.read()
             self.token_key = jwk.JWK.from_json(key_dict)
@@ -34,14 +42,14 @@ class User(Node):
         with open("ver_keys_for_user.txt") as file:
             ver_key = NistKey.Key()
             key_dict = file.read()
-            ver_key.from_json(key_dict)
+            ver_key.from_json(json.loads(key_dict))
             self.key = ver_key
 
     def initiate_auth(self):
-        self.token = User.make_token(key, token_key, 'JohnDoe', 'P@ssword!')
+        self.token = User.make_token(self.key, self.token_key, 'JohnDoe', 'P@ssword!')
 
-        nonce = rand_felement_b64str(self.key)
-        self.database[nonce] = []
+        nonce = utils.rand_felement_b64str(self.key)
+        self.db[nonce] = []
         message = {'_type': 'auth-init', 'ssid': nonce}
 
         self.send_to_nodes(message)
