@@ -15,6 +15,7 @@ class Client(Node):
         self.token = None
         self.token_key = None
         self.neighbours = None
+        self.threshold = 2
 
         self.fetch_keys()
 
@@ -49,6 +50,8 @@ class Client(Node):
         self.token = User.make_token(self.key, self.token_key, 'JohnDoe', 'P@ssword!')
 
         nonce = utils.rand_felement_b64str(self.key)
+
+        print("CREATED NONCE {} and type {}".format(nonce, type(nonce)))
         self.db[nonce] = []
         message = {'_type': 'auth-init', 'ssid': nonce}
 
@@ -56,23 +59,27 @@ class Client(Node):
         
 
     def received_broadcast_nonce(self, node, data):
-        idx = data['id']
+        idx = node.id
+        ssid = data['ssid']
         nonce = data['nonce']
-        self.database['ssid'].append((int(idx), nonce))
+        self.db[ssid].append((int(idx), nonce))
 
-        if len(self.database['ssid']) == THRESHOLD:
-            nonces = self.database[self.ssid]
+        if len(self.db[ssid]) == self.threshold:
+            nonces = self.db[ssid]
             nonces.sort()
-            user_nonce = rand_felement_b64str(self.key)
+            user_nonce = utils.rand_felement_b64str(self.key)
             tau = user_nonce
             for tup in nonces:
                 tau += tup[1]
             public, private = User.prep_token(self.token, self.key, 'P@ssword!')
-            proofQ = NIZK.proveQ(tau, public, private, key)
+            proofQ = NIZK.proveQ(tau, public, private, self.key)
 
-            message = {'_type': 'auth-init', 'token': token, 'B': public[1].export_b64str(), 'V': public[2].export_b64str(), 'proof': proofQ, 'user-nonce': user_nonce}
+            if(NIZK.verifyQ(tau, public, proofQ, self.key)):
+                print("VERIFYQ locally worked")
 
-            send_to_nodes(message)
+            message = {'_type': 'token-auth', 'ssid': ssid, 'token': self.token, 'B': public[1].export_b64str(), 'V': public[2].export_b64str(), 'proof': proofQ, 'user-nonce': user_nonce}
+
+            self.send_to_nodes(message)
 
 
     def received_result(self, node, data):

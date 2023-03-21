@@ -13,6 +13,7 @@ def main():
 
     key = NistKey.FullKey(idxs)
     key.generate_key()
+    print(key.x)
     key.split_sk()
     key.gen_ver_pks()
 
@@ -23,7 +24,7 @@ def main():
         file.write(token_key.export_public())
 
     with open("ver_keys_for_user.txt", "w") as file:
-        file.write(json.dumps(key.export_keys()))
+        file.write(json.dumps(key.export_keys(False)))
 
     for idx in idxs:
         veri_key = key.export_veri_key(idx)

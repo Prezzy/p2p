@@ -1,4 +1,5 @@
-
+from threading import Lock
+from params import THRESHOLD
 
 class User:
 
@@ -6,25 +7,32 @@ class User:
         self.ssid = ssid
         self.user_nonde = None
         self.nonces = []
-        self.step1ciphers = {}
+        self.step1ciphers = []
         self.Enc = None
         self.B = None
         self.V = None
-        self.tau
-        self.Bproduct = None
-        self.Tprime = None
-        self.coeff = None
-        self.Cbar = None
+        self.tau = None
+        self.yg = None
+        self.tau2 = None
+        self.ai = None
+        self.C_bar = None
         self.zeta = None
-        self.Ri = None
-        self.Carr = None
-        self.verifyR_result = {}
+        self.Ri_dict = None
+        self.C_dict = None
+        self.C_bar_arr = []
 
 
 class Database:
 
     def __init__(self):
         self.database = {}
+        self.lock = Lock()
+
+    def has_key(self, key):
+        '''Takes a key to the dictionary and returns True if the 
+        key exits'''
+        with self.lock:
+            return key in self.database
 
     def new_auth_nonce(self, ssid, idx, nonce):
         '''Takes in the ssid of user, idx of verifier, and string 
@@ -48,7 +56,6 @@ class Database:
             user.B = B
             user.V = V
 
-
     
     def store_authentication_nonce(self, ssid, user_nonce):
         '''Takes a user supplies nonce, stores it, and generates
@@ -57,6 +64,8 @@ class Database:
         with self.lock:
             tau = user_nonce
             nonces = self.database[ssid].nonces
+            if len(nonces) != THRESHOLD:
+                return False
             nonces.sort()
             for tup in nonces:
                 tau += tup[1]
@@ -65,83 +74,77 @@ class Database:
 
             
 
-    def store_step1_params(self, idx, ssid, BVi):
+    def store_step1_params(self, ssid, idx, B1, V1):
         '''Takes a list of ciphertext objects produced in
         step1 of distributed verification, stores them in
         the user object'''
 
         with self.lock:
-            self.database[ssid].step1ciphers[idx] = BVi
+            if isinstance(idx, str):
+                self.database[ssid].step1ciphers.append((int(idx), B1, V1))
+            elif isinstance(idx, int):
+                self.database[ssid].step1ciphers.append((idx, B1, V1))
 
-    def update_R(self, idx, result):
-        with self.lock:
-            self.database[ssid].verifyR_result[idx] = result
-            items = self.database[ssid].verifyR_result.items()
-            if len(items) == threhsold:
-                if False not in items:
-                    return True
-                else:
-                    return False
-            return False
+            if len(self.database[ssid].step1ciphers) == THRESHOLD:
+                self.database[ssid].step1ciphers.sort()
+                return (self.database[ssid].tau, self.database[ssid].step1ciphers)
+            else:
+                return False, False
 
-    def addBproduct(self, ssid, Bproduct):
+    def store_step2_params(self, idx, ssid, yg, tau2, ai, C_bar, zeta, Ri_dict, C_dict):
         with self.lock:
-            self.database[ssid].Bproduct = Bproduct
-
-    def addTprime(self, ssid, Tprime):
-        with self.lock:
-            self.database[ssid].Tprime = Tprime
-
-    def addCoeff(self, ssid, coeff):
-        with self.lock:
-            self.database[ssid].coeff = coeff
-
-    def addCbar(self, ssid, Cbar):
-        with self.lock:
-            self.database[ssid].Cbar = Cbar
-
-    def addZeta(self, ssid, zeta):
-        with self.lock:
+            self.database[ssid].yg = yg
+            self.database[ssid].tau2 = tau2
+            self.database[ssid].ai = ai
+            self.database[ssid].C_bar = C_bar
+            self.database[ssid].C_bar_arr.append(C_bar)
             self.database[ssid].zeta = zeta
+            self.database[ssid].Ri_dict = Ri_dict
+            self.database[ssid].C_dict = C_dict
 
-    def addRi(self, ssid, Ri):
+
+    def get_step3_verify_params(self, ssid, idx):
         with self.lock:
-            self.database[ssid].Ri = Ri
+            return self.database[ssid].tau2, self.database[ssid].C_dict[idx]
 
-    def addCarr(self, ssid, Carr):
-        pass
-        #with self.lock:
 
-    def getBV(self, ssid, B, V):
-        pass
-        #with self.lock:
-        #return (self.database[ssid].B, self.database[ssid].V)
-
-    def getBproduct(self, ssid, Bproduct):
-        pass
-        #with self.lock:
-        #    return self.database[ssid].Bproduct
-
-    def getTprime(self, ssid, Tprime):
+    def store_step3_params(self, ssid, idx, Ri):
         with self.lock:
-            return self.database[ssid].Tprime
-
-    def getCoeff(self, ssid, coeff):
+            self.database[ssid].Ri_dict[idx] = Ri 
+            if len(self.database[ssid].Ri_dict) == THRESHOLD:
+                return True
+            else:
+                return False
+                
+    def get_step3_proof_params(self, ssid, idx):
         with self.lock:
-            return self.database[ssid].coeff
+            g_bar = self.database[ssid].yg.b
+            C_bar = self.database[ssid].C_bar
+            Ci = self.database[ssid].C_dict[idx]
+            ai = self.database[ssid].ai
+            zeta = self.database[ssid].zeta
+            Ri = self.database[ssid].Ri_dict[idx]
 
-    def getCbar(self, ssid, Cbar):
-        with self.lock:
-            return self.database[ssid].Cbar
+            return (g_bar, C_bar, Ci, ai, zeta, Ri)
 
-    def getZeta(self, ssid, zeta):
-        with self.lock:
-            return self.database[ssid].zeta
 
-    def getRi(self, ssid, Ri):
+    def get_step4_params(self, ssid, idx):
         with self.lock:
-            return self.database[ssid].Ri
+            tau2 = self.database[ssid].tau2
+            g_bar = self.database[ssid].yg.b
+            Ci = self.database[ssid].C_dict[idx]
+            Ri = self.database[ssid].Ri_dict[idx]
 
-    def getCarr(self, ssid, Carr):
+            return tau2, g_bar, Ci, Ri
+
+    def store_C_bar(self, ssid, idx, C_bar):
         with self.lock:
-            return self.database[ssid].Carr
+            self.database[ssid].C_bar_arr.append(C_bar)
+
+    def get_C_bar_arr(self, ssid):
+        with self.lock:
+            return self.database[ssid].C_bar_arr, self.database[ssid].yg.a
+
+    def get_BV(self, ssid):
+        with self.lock:
+            return self.database[ssid].B, self.database[ssid].V
