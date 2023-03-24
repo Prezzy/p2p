@@ -140,6 +140,10 @@ class Database:
     def store_C_bar(self, ssid, idx, C_bar):
         with self.lock:
             self.database[ssid].C_bar_arr.append(C_bar)
+            if len(self.database[ssid].C_bar_arr) == 2:
+                return True
+            else:
+                return False
 
     def get_C_bar_arr(self, ssid):
         with self.lock:

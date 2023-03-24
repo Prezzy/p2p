@@ -1,8 +1,9 @@
 import time
 from client import Client
+from params import THRESHOLD, TOTAL
 
 
-client = Client("127.0.0.1", 8000, 0)
+client = Client("127.0.0.1", 8000, THRESHOLD, TOTAL, 0)
 
 client. start()
 

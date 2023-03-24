@@ -1,4 +1,5 @@
 import json
+import time
 from p2pnetwork.node import Node
 from db import Database, User
 from patetokens.Cipher import Cipher
@@ -8,27 +9,32 @@ from jwcrypto import jwk, jws
 
 class Client(Node):
 
-    def __init__(self, host, port, id=None, callback=None, max_connections=4):
+    def __init__(self, host, port, threshold, total, id=None, callback=None, max_connections=4):
         super(Client, self).__init__(host, port, id, callback, max_connections)
         self.db = {}
+        self.result = {}
         self.key = None
         self.token = None
         self.token_key = None
         self.neighbours = None
-        self.threshold = 2
+        self.threshold = threshold
+        self.total = total
+        self.start_time = None
+        self.end_local_comp_time = None
+        self.end_time = None
 
         self.fetch_keys()
 
 
     def node_message(self, connected_node, message):
 
-        print("node_message from " + connected_node.id + ": " + str(message))
+        #print("node_message from " + connected_node.id + ": " + str(message))
 
         if('_type' in message):
             if (message['_type'] == 'broadcast-nonce'):
                 self.received_broadcast_nonce(connected_node, message)
 
-            if (message['_type'] == 'result'):
+            if (message['_type'] == 'auth-response'):
                 self.received_result(connected_node, message)
 
 
@@ -49,12 +55,16 @@ class Client(Node):
     def initiate_auth(self):
         self.token = User.make_token(self.key, self.token_key, 'JohnDoe', 'P@ssword!')
 
+        
         nonce = utils.rand_felement_b64str(self.key)
 
-        print("CREATED NONCE {} and type {}".format(nonce, type(nonce)))
+        #print("CREATED NONCE {} and type {}".format(nonce, type(nonce)))
         self.db[nonce] = []
+        self.result[nonce] = {}
         message = {'_type': 'auth-init', 'ssid': nonce}
 
+        #start user timing
+        self.start_time = time.perf_counter()
         self.send_to_nodes(message)
         
 
@@ -74,21 +84,24 @@ class Client(Node):
             public, private = User.prep_token(self.token, self.key, 'P@ssword!')
             proofQ = NIZK.proveQ(tau, public, private, self.key)
 
-            if(NIZK.verifyQ(tau, public, proofQ, self.key)):
-                print("VERIFYQ locally worked")
+            #if(NIZK.verifyQ(tau, public, proofQ, self.key)):
+                #print("VERIFYQ locally worked")
 
             message = {'_type': 'token-auth', 'ssid': ssid, 'token': self.token, 'B': public[1].export_b64str(), 'V': public[2].export_b64str(), 'proof': proofQ, 'user-nonce': user_nonce}
-
+            self.end_local_comp_time = time.perf_counter()
             self.send_to_nodes(message)
 
 
     def received_result(self, node, data):
-        result = data['result']
-        pass
-    ## do something with result.
-
-
-
+        ssid = data['ssid']
+        self.result[ssid][node.id] = data['result']
+        if len(self.result[ssid]) == self.threshold and 'DENY' not in self.result[ssid].values():
+            #end user timing
+            self.end_time = time.perf_counter()
+            with open("total_run_time", "a+") as file:
+                file.write("{}\n".format(self.end_time - self.start_time))
+            with open("client_time", "a+") as file:
+                file.write("{}\n".format(self.end_local_comp_time - self.start_time))
 
 
 
