@@ -5,7 +5,7 @@ from patetokens import NistKey
 import json
 
 
-idxs = ['1', '2']
+idxs = ['1', '2', '3']
 
 def main():
 
@@ -13,7 +13,6 @@ def main():
 
     key = NistKey.FullKey(idxs)
     key.generate_key()
-    print(key.x)
     key.split_sk()
     key.gen_ver_pks()
 
@@ -28,8 +27,6 @@ def main():
 
     for idx in idxs:
         veri_key = key.export_veri_key(idx)
-        print("VERI KEYS")
-        print(veri_key)
         with open("veri_key_{}".format(idx), "w") as file:
             file.write(json.dumps(veri_key))
 

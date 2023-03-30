@@ -11,6 +11,7 @@ class User:
         self.Enc = None
         self.B = None
         self.V = None
+        self.proofQ = None
         self.tau = None
         self.yg = None
         self.tau2 = None
@@ -34,7 +35,7 @@ class Database:
         with self.lock:
             return key in self.database
 
-    def new_auth_nonce(self, ssid, idx, nonce):
+    def store_auth_nonce(self, ssid, idx, nonce):
         '''Takes in the ssid of user, idx of verifier, and string 
         representation of verifier nonce for the session. Stores
         a tuple with verifier id as int, and the nonce value'''
@@ -42,11 +43,22 @@ class Database:
         with self.lock:
             if ssid in self.database:
                 self.database[ssid].nonces.append((int(idx), nonce))
+                nonces = self.database[ssid].nonces
+                #print(nonces)
+                if len(nonces) < THRESHOLD+1: #when we have threshold + user's nonce, we can start step 1!
+                    return False
+                nonces.sort()
+                tau = ''
+                for tup in nonces:
+                    tau += tup[1]
+                self.database[ssid].tau = tau
+                return tau
             else:
                 self.database[ssid] = User()
                 self.database[ssid].nonces.append((int(idx), nonce))
+                return False
 
-    def store_token_params(self, ssid, Enc, B, V):
+    def store_token_params(self, ssid, Enc, B, V, proof):
         '''Takes in three ciphertext objects from users auth request
         and stores them'''
 
@@ -55,22 +67,29 @@ class Database:
             user.Enc = Enc
             user.B = B
             user.V = V
+            user.proofQ = proof
 
     
-    def store_authentication_nonce(self, ssid, user_nonce):
-        '''Takes a user supplies nonce, stores it, and generates
-        the tau string of all session nonces, returns tau'''
+    def get_token_params(self, ssid):
 
         with self.lock:
-            tau = user_nonce
-            nonces = self.database[ssid].nonces
-            if len(nonces) != THRESHOLD:
-                return False
-            nonces.sort()
-            for tup in nonces:
-                tau += tup[1]
-            self.database[ssid].tau = tau
-            return tau
+            user = self.database[ssid]
+            return user.Enc, user.B, user.V, user.proofQ
+
+    #def store_authentication_nonce(self, ssid, idx, user_nonce):
+    #    '''Takes a user supplies nonce, stores it, and generates
+    #    the tau string of all session nonces, returns tau'''
+
+    #    with self.lock:
+    #        tau = user_nonce
+    #        nonces = self.database[ssid].nonces
+    #        if len(nonces) != THRESHOLD:
+    #            return False
+    #        nonces.sort()
+    #        for tup in nonces:
+    #            tau += tup[1]
+    #        self.database[ssid].tau = tau
+    #        return tau
 
             
 
@@ -105,7 +124,10 @@ class Database:
 
     def get_step3_verify_params(self, ssid, idx):
         with self.lock:
-            return self.database[ssid].tau2, self.database[ssid].C_dict[idx]
+            if self.database[ssid].tau2 is None or self.database[ssid].C_dict is None:
+                return False, False
+            else:
+                return self.database[ssid].tau2, self.database[ssid].C_dict[idx]
 
 
     def store_step3_params(self, ssid, idx, Ri):
@@ -130,17 +152,20 @@ class Database:
 
     def get_step4_params(self, ssid, idx):
         with self.lock:
-            tau2 = self.database[ssid].tau2
-            g_bar = self.database[ssid].yg.b
-            Ci = self.database[ssid].C_dict[idx]
-            Ri = self.database[ssid].Ri_dict[idx]
+            if idx in self.database[ssid].Ri_dict:
+                tau2 = self.database[ssid].tau2
+                g_bar = self.database[ssid].yg.b
+                Ci = self.database[ssid].C_dict[idx]
+                Ri = self.database[ssid].Ri_dict[idx]
 
-            return tau2, g_bar, Ci, Ri
+                return tau2, g_bar, Ci, Ri
+            else:
+                return False, False, False, False
 
     def store_C_bar(self, ssid, idx, C_bar):
         with self.lock:
             self.database[ssid].C_bar_arr.append(C_bar)
-            if len(self.database[ssid].C_bar_arr) == 2:
+            if len(self.database[ssid].C_bar_arr) == THRESHOLD:
                 return True
             else:
                 return False

@@ -7,6 +7,8 @@ from patetokens import NIZK, NistKey, DistVerify, utils, User
 from jwcrypto import jwk, jws
 
 
+compression_algo = 'bzip2'
+
 class Client(Node):
 
     def __init__(self, host, port, threshold, total, id=None, callback=None, max_connections=4):
@@ -65,7 +67,7 @@ class Client(Node):
 
         #start user timing
         self.start_time = time.perf_counter()
-        self.send_to_nodes(message)
+        self.send_to_nodes(message, compression=compression_algo)
         
 
     def received_broadcast_nonce(self, node, data):
@@ -86,10 +88,12 @@ class Client(Node):
 
             #if(NIZK.verifyQ(tau, public, proofQ, self.key)):
                 #print("VERIFYQ locally worked")
+            #else:
+                #print("DID NOT PASS")
 
             message = {'_type': 'token-auth', 'ssid': ssid, 'token': self.token, 'B': public[1].export_b64str(), 'V': public[2].export_b64str(), 'proof': proofQ, 'user-nonce': user_nonce}
             self.end_local_comp_time = time.perf_counter()
-            self.send_to_nodes(message)
+            self.send_to_nodes(message, compression=compression_algo)
 
 
     def received_result(self, node, data):
@@ -102,6 +106,7 @@ class Client(Node):
                 file.write("{}\n".format(self.end_time - self.start_time))
             with open("client_time", "a+") as file:
                 file.write("{}\n".format(self.end_local_comp_time - self.start_time))
+        self.stop()
 
 
 

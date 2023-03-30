@@ -2,10 +2,11 @@ import time
 from verifier import Verifier
 from params import THRESHOLD, TOTAL
 
-verifier2 = Verifier("127.0.0.1", 8002, THRESHOLD, TOTAL, 2)
+PORT = 8002
+ID = 2
 
-verifier2.start()
+verifier = Verifier("127.0.0.1", PORT, THRESHOLD, TOTAL, ID)
 
-time.sleep(5)
+verifier.start()
 
-verifier2.connect_with_node("127.0.0.1", 8001)
+

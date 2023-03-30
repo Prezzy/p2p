@@ -6,7 +6,7 @@ from patetokens.Cipher import Cipher
 from patetokens import NIZK, NistKey, DistVerify, utils
 from jwcrypto import jwk, jws
 
-
+compression_algo = 'bzip2'
 
 
 class Verifier (Node):
@@ -114,17 +114,27 @@ class Verifier (Node):
         #Start verifier time
         tick = time.perf_counter()
         nonce = utils.rand_felement_b64str(self.key)
-        self.db.new_auth_nonce(data['ssid'], self.id, nonce)
+        self.db.store_auth_nonce(data['ssid'], self.id, nonce)
         #print("node {} got request for nonce and made {}".format(self.id, nonce))
         message = {'_type': 'broadcast-nonce', 'ssid':data['ssid'], 'nonce':nonce}
         toc = time.perf_counter()
         self.time["auth-init"].append(toc-tick)
-        self.send_to_nodes(message)
+        #print("Node {} has inbound {}".format(self.id, self.nodes_inbound))
+        #print("Node {} has outbound {}".format(self.id, self.nodes_outbound))
+        self.send_to_nodes(message, compression=compression_algo)
 
 
     def received_broadcast_nonce(self, node, data):
-        self.db.new_auth_nonce(data['ssid'], node.id, data['nonce'])
-        #print("node {} got nonce {} from node {}".format(self.id, data['nonce'], node.id))
+        #print("Node {} recieved broadcast from node {}".format(self.id, node.id))
+        tick = time.perf_counter()
+        ssid = data['ssid']
+        tau = self.db.store_auth_nonce(ssid, node.id, data['nonce'])
+        if tau:
+            Enc, B, V, proof = self.db.get_token_params(ssid)
+            self.step1(ssid, tau, Enc, B, V, proof)
+            toc = self.perf_counter()
+            self.time["step1"] = toc-tick
+        
 
 
     def received_token_auth(self, node, data):
@@ -132,34 +142,31 @@ class Verifier (Node):
         ssid = data['ssid']
         if self.db.has_key(ssid):
             Enc, B, V, user_nonce = self.unwrap_auth_data(data)
-            self.db.store_token_params(ssid, Enc, B, V)
-
-            tau = self.db.store_authentication_nonce(ssid, user_nonce)
-            #if not tau:
-                #print("Recieved auth token before receiving all nonces")
-
             proof = data['proof']
-
-            result = NIZK.verifyQ(tau, [Enc, B, V], proof, self.key)
-            #print("NODE {} result of proof is {}".format(self.id, result))
-            if result:
-                ciphertexts, randomness = DistVerify.round1(B, V, self.key)
-                self.db.store_step1_params(ssid, self.id, ciphertexts[0], ciphertexts[1])
-                proofR = NIZK.proveR(self.id, [B,V]+ciphertexts, randomness, self.key)
-                
-                #self_test = NIZK.verifyR(self.id, [B,V]+ciphertexts, proofR, self.key)
-                #print("Node {} verfied self proof as {}".format(self.id, self_test))
-
-
-                serialized_ciphers = self.wrap_ciphers(ciphertexts)
-                #TODO: remove below, packed into the function call above
-                #serialized_ciphers = []
-                #for cipher in ciphertexts:
-                #    serialized_ciphers.append(cipher.export_b64str())
-                response = {'_type':'bc-step1-res', 'ssid':ssid, 'ciphers': serialized_ciphers, 'proofR': proofR}
+            self.db.store_token_params(ssid, Enc, B, V, proof)
+            tau = self.db.store_auth_nonce(ssid, node.id, user_nonce)
+            if tau:
+                self.step1(ssid, tau, Enc, B, V, proof)
                 toc = time.perf_counter()
-                self.time["step1"] = toc-tick 
-                self.send_to_nodes(response)
+                self.time["step1"] = toc-tick
+            
+
+
+    def step1(self, ssid, tau, Enc, B, V, proof):
+        result = NIZK.verifyQ(tau, [Enc, B, V], proof, self.key)
+        if result:
+            ciphertexts, randomness = DistVerify.round1(B, V, self.key)
+            self.db.store_step1_params(ssid, self.id, ciphertexts[0], ciphertexts[1])
+            proofR = NIZK.proveR(self.id, [B,V]+ciphertexts, randomness, self.key)
+
+            serialized_ciphers = self.wrap_ciphers(ciphertexts)
+            #TODO: remove below, packed into the function call above
+            #serialized_ciphers = []
+            #for cipher in ciphertexts:
+            #    serialized_ciphers.append(cipher.export_b64str())
+            response = {'_type':'bc-step1-res', 'ssid':ssid, 'ciphers': serialized_ciphers, 'proofR': proofR}
+            #self.time["step1"] = toc-tick 
+            self.send_to_nodes(response, compression=compression_algo)
 
     def step2(self, node, data):
         tick = time.perf_counter()
@@ -182,7 +189,7 @@ class Verifier (Node):
                     response = {'_type': 'bc-step2-res', 'ssid': ssid, 'Rj': Ri_dict[self.id].export_b64str(), 'proofS': proofS}
                     toc = time.perf_counter()
                     self.time["step2"] = toc-tick
-                    self.send_to_nodes(response)
+                    self.send_to_nodes(response, compression=compression_algo)
 
     def step3(self, node, data):
         tick = time.perf_counter()
@@ -190,8 +197,11 @@ class Verifier (Node):
         if self.db.has_key(ssid):
             Rj = Cipher.from_b64str(data['Rj'], self.key)
             tau2, Cj = self.db.get_step3_verify_params(ssid, node.id)
+            while(tau2 == False):
+                tau2, Cj = self.db.get_step3_verify_params(ssid, node.id)
             proofS = data['proofS']
-            if NIZK.verifyS(node.id, tau2, Cj, Rj, proofS, self.key):
+            res = NIZK.verifyS(node.id, tau2, Cj, Rj, proofS, self.key)
+            if res:
                 flag = self.db.store_step3_params(ssid, node.id, Rj)
                 if flag:
                     g_bar, C_bar, Ci, ai, zeta, Ri = self.db.get_step3_proof_params(ssid, self.id)
@@ -200,7 +210,7 @@ class Verifier (Node):
                     response = {'_type': 'bc-step3-res', 'ssid': ssid, 'C_bar': utils.gmp_to_b64str(C_bar), 'proofT':proofT}
                     toc = time.perf_counter()
                     self.time["step3"] = toc-tick
-                    self.send_to_nodes(response)
+                    self.send_to_nodes(response, compression=compression_algo)
 
     def step4(self, node, data):
         tick = time.perf_counter()
@@ -209,6 +219,8 @@ class Verifier (Node):
             C_bar = utils.b64str_to_gmp(data['C_bar'])
             proofT = data['proofT']
             tau2, g_bar, Ci, Ri = self.db.get_step4_params(ssid, node.id)
+            while(tau2 == False):
+                tau2, g_bar, Ci, Ri = self.db.get_step4_params(ssid, node.id)
             if NIZK.verifyT(node.id, tau2, g_bar, C_bar, Ci, Ri, proofT, self.key):
 
                 flag = self.db.store_C_bar(ssid, node.id, C_bar)
@@ -219,7 +231,9 @@ class Verifier (Node):
                     response = {'_type':'auth-response', 'ssid': ssid, 'result':'ACCEPT'}
                     toc = time.perf_counter()
                     self.time["step4"] = toc - tick
-                    self.send_to_nodes(response)
+                    self.send_to_nodes(response, compression=compression_algo)
                     local_comp_time = self.add_local_comp_time(self.time)
                     with open("verifier_{}_time".format(self.id), "a+") as file:
                         file.write("{}\n".format(local_comp_time))
+
+                    self.stop()
