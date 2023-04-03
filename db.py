@@ -5,6 +5,7 @@ class User:
 
     def __init__(self, ssid=None):
         self.ssid = ssid
+        self.server_set = [] #empty list for check in store...nonce
         self.user_nonde = None
         self.nonces = []
         self.step1ciphers = []
@@ -29,13 +30,31 @@ class Database:
         self.database = {}
         self.lock = Lock()
 
+    def check_proceed(self, ssid, idx):
+        with self.lock:
+            if ssid in self.database:
+                if idx in self.database[ssid].server_set:
+                    return True
+            else:
+                return False
+
     def has_key(self, key):
         '''Takes a key to the dictionary and returns True if the 
         key exits'''
         with self.lock:
             return key in self.database
 
-    def store_auth_nonce(self, ssid, idx, nonce):
+    def create_context(self, ssid, idx, server_set):
+        with self.lock:
+            #server_set = server_set.split(',')
+            if ssid in self.database:
+                self.database[ssid].server_set = server_set
+            else:
+                self.database[ssid] = User()
+                self.database[ssid].server_set = server_set
+
+
+    def store_auth_nonce(self, ssid, myidx, idx, nonce):
         '''Takes in the ssid of user, idx of verifier, and string 
         representation of verifier nonce for the session. Stores
         a tuple with verifier id as int, and the nonce value'''
@@ -45,7 +64,7 @@ class Database:
                 self.database[ssid].nonces.append((int(idx), nonce))
                 nonces = self.database[ssid].nonces
                 #print(nonces)
-                if len(nonces) < THRESHOLD+1: #when we have threshold + user's nonce, we can start step 1!
+                if len(nonces) < THRESHOLD+1 or myidx not in self.database[ssid].server_set: #when we have threshold + user's nonce, we can start step 1!
                     return False
                 nonces.sort()
                 tau = ''

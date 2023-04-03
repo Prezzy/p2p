@@ -114,7 +114,8 @@ class Verifier (Node):
         #Start verifier time
         tick = time.perf_counter()
         nonce = utils.rand_felement_b64str(self.key)
-        self.db.store_auth_nonce(data['ssid'], self.id, nonce)
+        self.db.create_context(data['ssid'], self.id, data['server_set'])
+        self.db.store_auth_nonce(data['ssid'], self.id, self.id, nonce)
         #print("node {} got request for nonce and made {}".format(self.id, nonce))
         message = {'_type': 'broadcast-nonce', 'ssid':data['ssid'], 'nonce':nonce}
         toc = time.perf_counter()
@@ -128,7 +129,7 @@ class Verifier (Node):
         #print("Node {} recieved broadcast from node {}".format(self.id, node.id))
         tick = time.perf_counter()
         ssid = data['ssid']
-        tau = self.db.store_auth_nonce(ssid, node.id, data['nonce'])
+        tau = self.db.store_auth_nonce(ssid, self.id, node.id, data['nonce'])
         if tau:
             Enc, B, V, proof = self.db.get_token_params(ssid)
             self.step1(ssid, tau, Enc, B, V, proof)
@@ -144,7 +145,7 @@ class Verifier (Node):
             Enc, B, V, user_nonce = self.unwrap_auth_data(data)
             proof = data['proof']
             self.db.store_token_params(ssid, Enc, B, V, proof)
-            tau = self.db.store_auth_nonce(ssid, node.id, user_nonce)
+            tau = self.db.store_auth_nonce(ssid, self.id, node.id, user_nonce)
             if tau:
                 self.step1(ssid, tau, Enc, B, V, proof)
                 toc = time.perf_counter()
@@ -171,7 +172,7 @@ class Verifier (Node):
     def step2(self, node, data):
         tick = time.perf_counter()
         ssid = data['ssid']
-        if self.db.has_key(ssid):
+        if self.db.check_proceed(ssid, self.id):
             B, V = self.db.get_BV(ssid)
             ciphertexts = self.unwrap_ciphers(data['ciphers'])
             proofR = data['proofR']
@@ -194,7 +195,7 @@ class Verifier (Node):
     def step3(self, node, data):
         tick = time.perf_counter()
         ssid = data['ssid']
-        if self.db.has_key(ssid):
+        if self.db.check_proceed(ssid, self.id):
             Rj = Cipher.from_b64str(data['Rj'], self.key)
             tau2, Cj = self.db.get_step3_verify_params(ssid, node.id)
             while(tau2 == False):
@@ -215,7 +216,7 @@ class Verifier (Node):
     def step4(self, node, data):
         tick = time.perf_counter()
         ssid = data['ssid']
-        if self.db.has_key(ssid):
+        if self.db.check_proceed(ssid, self.id):
             C_bar = utils.b64str_to_gmp(data['C_bar'])
             proofT = data['proofT']
             tau2, g_bar, Ci, Ri = self.db.get_step4_params(ssid, node.id)
@@ -237,3 +238,5 @@ class Verifier (Node):
                         file.write("{}\n".format(local_comp_time))
 
                     self.stop()
+        else:
+            self.stop()

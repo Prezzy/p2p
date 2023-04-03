@@ -18,7 +18,6 @@ class Client(Node):
         self.key = None
         self.token = None
         self.token_key = None
-        self.server_set = None
         self.neighbours = None
         self.threshold = threshold
         self.total = total
@@ -58,14 +57,13 @@ class Client(Node):
     def initiate_auth(self):
         self.token = User.make_token(self.key, self.token_key, 'JohnDoe', 'P@ssword!')
 
-        self.server_set = ['1', '3']
         
         nonce = utils.rand_felement_b64str(self.key)
 
         #print("CREATED NONCE {} and type {}".format(nonce, type(nonce)))
         self.db[nonce] = []
         self.result[nonce] = {}
-        message = {'_type': 'auth-init', 'ssid': nonce, 'server_set': self.server_set}
+        message = {'_type': 'auth-init', 'ssid': nonce}
 
         #start user timing
         self.start_time = time.perf_counter()
