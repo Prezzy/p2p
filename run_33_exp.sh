@@ -9,7 +9,7 @@ do
 	sleep 2
 	taskset -c 2 python3 ver3_node.py &
 	sleep 2
-	taskset -c 2 python3 client_node.py
+	taskset -c 3 python3 client_node.py
 
 	wait
 	echo "done experiment $i"

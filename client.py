@@ -58,7 +58,7 @@ class Client(Node):
     def initiate_auth(self):
         self.token = User.make_token(self.key, self.token_key, 'JohnDoe', 'P@ssword!')
 
-        self.server_set = ['1', '3']
+        self.server_set = ['1', '2']
         
         nonce = utils.rand_felement_b64str(self.key)
 

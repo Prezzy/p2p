@@ -1,0 +1,8 @@
+23 LAN measurments were run on work comp, not on VM
+
+VM runs:
+WAN 23
+WAN 33
+LAN 33
+WAN 22
+LAN 22

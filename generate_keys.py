@@ -5,7 +5,7 @@ from patetokens import NistKey
 import json
 
 
-idxs = ['1', '2', '3']
+idxs = ['1', '2']
 
 def main():
 

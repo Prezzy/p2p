@@ -177,6 +177,7 @@ class Verifier (Node):
             ciphertexts = self.unwrap_ciphers(data['ciphers'])
             proofR = data['proofR']
 
+
             if NIZK.verifyR(node.id, [B,V] + ciphertexts, proofR, self.key):
                 tau, ciphers = self.db.store_step1_params(ssid, node.id, ciphertexts[0], ciphertexts[1])
                 if ciphers:

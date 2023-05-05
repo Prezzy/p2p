@@ -35,6 +35,8 @@ class Database:
             if ssid in self.database:
                 if idx in self.database[ssid].server_set:
                     return True
+                else:
+                    return False
             else:
                 return False
 

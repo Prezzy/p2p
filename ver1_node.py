@@ -13,7 +13,12 @@ res = False
 while(not res):
     res = verifier.connect_with_node('127.0.0.1', 8002)
 
-res = False
-while(not res):
-    res = verifier.connect_with_node('127.0.0.1', 8003)
+#res = False
+#while(not res):
+#    res = verifier.connect_with_node('127.0.0.1', 8003)
+
+
+#res = False
+#while(not res):
+#    res = verifier.connect_with_node('127.0.0.1', 8004)
 
